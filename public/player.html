@@ -3,46 +3,83 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مشغل البث المباشر 🎬</title>
+  <title>مشغل الفيديو</title>
   <style>
     * {
+      box-sizing: border-box;
       margin: 0;
       padding: 0;
-      box-sizing: border-box;
-      background-color: #000;
     }
-    body, html {
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
+    body {
+      background-color: #000;
+      color: #fff;
       display: flex;
+      flex-direction: column;
       justify-content: center;
       align-items: center;
-    }
-    video {
-      width: 100%;
-      height: 100%;
-      max-height: 100vh;
+      height: 100vh;
+      font-family: sans-serif;
     }
     #status {
-      position: absolute;
-      color: #fff;
-      font-family: sans-serif;
-      font-size: 16px;
-      background: rgba(0, 0, 0, 0.7);
-      padding: 10px 20px;
+      margin-bottom: 15px;
+      font-size: 1.1rem;
+    }
+    .iframe-container {
+      width: 100%;
+      height: 100%;
+      max-width: 1000px;
+      max-height: 80vh;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
       border-radius: 8px;
-      pointer-events: none;
-      z-index: 10;
     }
   </style>
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
 </head>
 <body>
 
-  <div id="status">جاري جلب البث المباشر... ⏳</div>
-  <video id="videoPlayer" controls autoplay playsinline></video>
+  <div id="status">جاري تجهيز المشغل... ⏳</div>
 
-  <script src="/js/player.js"></script>
+  <div class="iframe-container">
+    <iframe id="videoFrame" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', async () => {
+      const statusEl = document.getElementById('status');
+      const iframe = document.getElementById('videoFrame');
+
+      // 1. قراءة المعرفات من الرابط
+      const params = new URLSearchParams(window.location.search);
+      const type = params.get('type') || 'movie';
+      const id = params.get('id');
+      const s = params.get('s');
+      const e = params.get('e');
+
+      if (!id) {
+        statusEl.innerText = 'يرجى تحديد المعرف عبر ?id= ❌';
+        return;
+      }
+
+      try {
+        // 2. طلب رابط التضمين من الـ API الخاص بنا
+        const query = new URLSearchParams({ type, id, ...(s && { s }), ...(e && { e }) });
+        const res = await fetch(`/api/stream?${query.toString()}`);
+        const data = await res.json();
+
+        if (data.success && data.embedUrl) {
+          // 3. توجيه الإطار إلى رابط التضمين
+          iframe.src = data.embedUrl;
+          statusEl.style.display = 'none';
+        } else {
+          statusEl.innerText = 'تعذر العثور على رابط التضمين ⚠️';
+        }
+      } catch (err) {
+        statusEl.innerText = 'خطأ في الاتصال بالخادم ❌';
+      }
+    });
+  </script>
 </body>
 </html>
