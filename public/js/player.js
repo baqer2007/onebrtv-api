@@ -1,56 +1,56 @@
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
   const statusEl = document.getElementById('status');
   const video = document.getElementById('videoPlayer');
 
+  // 1. قراءة بيانات العمل من الرابط
   const urlParams = new URLSearchParams(window.location.search);
-  const streamUrl = urlParams.get('url');
-  const subtitleUrl = urlParams.get('sub');
+  const type = urlParams.get('type') || 'movie';
+  const id = urlParams.get('id');
+  const s = urlParams.get('s');
+  const e = urlParams.get('e');
+  const directUrl = urlParams.get('url');
 
-  if (!streamUrl) {
-    statusEl.innerText = 'خطأ: يرجى تزويد رابط الفيديو عبر المعامل ?url= ❌';
+  // دعم الروابط المباشرة القديمة إن وجدت
+  if (directUrl) {
+    playStream(directUrl);
     return;
   }
 
-  // إضافة ملف الترجمة إن وُجد
-  if (subtitleUrl) {
-    const track = document.createElement('track');
-    track.kind = 'subtitles';
-    track.label = 'Arabic';
-    track.srclang = 'ar';
-    track.src = subtitleUrl;
-    track.default = true;
-    video.appendChild(track);
+  if (!id) {
+    statusEl.innerText = 'يرجى تحديد المعرف عبر ?id= ❌';
+    return;
   }
 
-  // تشغيل البث عبر Hls.js
-  if (Hls.isSupported()) {
-    const hls = new Hls();
-    
-    // تحميل الرابط المباشر
-    hls.loadSource(streamUrl);
-    hls.attachMedia(video);
+  // 2. طلب بيانات البث من الـ API
+  try {
+    statusEl.innerText = 'جاري استخراج البث... ⏳';
+    const query = new URLSearchParams({ type, id, ...(s && { s }), ...(e && { e }) });
+    const response = await fetch(`/api/stream?${query.toString()}`);
+    const data = await response.json();
 
-    hls.on(Hls.Events.MANIFEST_PARSED, () => {
-      statusEl.style.display = 'none';
-      video.play().catch(() => {
-        console.log('انقر على الفيديو لبدء التشغيل يدويًا');
+    if (!data.success) {
+      statusEl.innerText = data.message || 'تعذر جلب البث ⚠️';
+      return;
+    }
+
+    statusEl.style.display = 'none';
+    console.log('تم العثور على رابط التضمين:', data.embedUrl);
+  } catch (err) {
+    statusEl.innerText = 'خطأ في الاتصال بالخادم ❌';
+  }
+
+  function playStream(streamUrl) {
+    if (Hls.isSupported()) {
+      const hls = new Hls();
+      hls.loadSource(streamUrl);
+      hls.attachMedia(video);
+      hls.on(Hls.Events.MANIFEST_PARSED, () => {
+        statusEl.style.display = 'none';
+        video.play();
       });
-    });
-
-    hls.on(Hls.Events.ERROR, (event, data) => {
-      if (data.fatal) {
-        // إذا فشل الرابط المباشر، نجرب تمريره عبر البروكسي كحل بديل
-        console.warn('فشل الرابط المباشر، جاري التبديل إلى البروكسي...');
-        hls.loadSource(`/api/proxy?url=${encodeURIComponent(streamUrl)}`);
-      }
-    });
-  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = streamUrl;
-    video.addEventListener('loadedmetadata', () => {
-      statusEl.style.display = 'none';
+    } else {
+      video.src = streamUrl;
       video.play();
-    });
-  } else {
-    statusEl.innerText = 'المتصفح لا يدعم هذا النوع من البث ⚠️';
+    }
   }
 });
