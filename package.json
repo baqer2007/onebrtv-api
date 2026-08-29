@@ -7,7 +7,7 @@
     "start": "node api/index.js"
   },
   "dependencies": {
-    "@consumet/api": "^1.5.2",
+    "@consumet/api": "latest",
     "axios": "^1.7.0",
     "cors": "^2.8.5",
     "express": "^4.19.2"
