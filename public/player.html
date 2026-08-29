@@ -3,7 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مشغل الفيديو</title>
+  <title>مشغل الفيديو الصافي</title>
+  <!-- 📦 استدعاء مكتبة HLS.js لتشغيل بث m3u8 -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
   <style>
     * {
       box-sizing: border-box;
@@ -24,34 +26,67 @@
       margin-bottom: 15px;
       font-size: 1.1rem;
     }
-    .iframe-container {
+    .video-container {
       width: 100%;
-      height: 100%;
-      max-width: 1000px;
-      max-height: 80vh;
+      max-width: 900px;
+      height: auto;
     }
-    iframe {
+    video {
       width: 100%;
-      height: 100%;
-      border: none;
       border-radius: 8px;
+      background: #111;
     }
   </style>
 </head>
 <body>
 
-  <div id="status">جاري تجهيز المشغل... ⏳</div>
+  <div id="status">جاري جلب البث وفك التشفير... ⏳</div>
 
-  <div class="iframe-container">
-    <iframe id="videoFrame" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
+  <div class="video-container">
+    <video id="videoPlayer" controls playsinline></video>
   </div>
 
   <script>
+    // 🔓 1. دالة فك التشفير (عكس النص ثم فك Base64)
+    function decodeStreamUrl(encodedText) {
+      try {
+        const reversed = encodedText.split('').reverse().join('');
+        return atob(reversed);
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // ▶️ 2. دالة تشغيل البث عبر Hls.js
+    function playStream(streamUrl) {
+      const video = document.getElementById('videoPlayer');
+      const statusEl = document.getElementById('status');
+
+      if (Hls.isSupported()) {
+        const hls = new Hls();
+        hls.loadSource(streamUrl);
+        hls.attachMedia(video);
+        hls.on(Hls.Events.MANIFEST_PARSED, () => {
+          statusEl.style.display = 'none';
+          video.play();
+        });
+        hls.on(Hls.Events.ERROR, (event, data) => {
+          statusEl.innerText = 'خطأ في تشغيل مسار البث ⚠️';
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = streamUrl;
+        video.addEventListener('loadedmetadata', () => {
+          statusEl.style.display = 'none';
+          video.play();
+        });
+      } else {
+        statusEl.innerText = 'متصفحك لا يدعم تشغيل هذا النوع من البث ❌';
+      }
+    }
+
+    // 🚀 3. العملية الرئيسية عند تحميل الصفحة
     document.addEventListener('DOMContentLoaded', async () => {
       const statusEl = document.getElementById('status');
-      const iframe = document.getElementById('videoFrame');
-
-      // 1. قراءة المعرفات من الرابط
       const params = new URLSearchParams(window.location.search);
       const type = params.get('type') || 'movie';
       const id = params.get('id');
@@ -59,25 +94,44 @@
       const e = params.get('e');
 
       if (!id) {
-        statusEl.innerText = 'يرجى تحديد المعرف عبر ?id= ❌';
+        statusEl.innerText = 'يرجى تحديد معرف العمل id ❌';
         return;
       }
 
-      try {
-        // 2. طلب رابط التضمين من الـ API الخاص بنا
-        const query = new URLSearchParams({ type, id, ...(s && { s }), ...(e && { e }) });
-        const res = await fetch(`/api/stream?${query.toString()}`);
-        const data = await res.json();
+      // تحديد رابط المزود الأصلي
+      let targetUrl = (type === 'tv') 
+        ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}` 
+        : `https://vidsrc.to/embed/movie/${id}`;
 
-        if (data.success && data.embedUrl) {
-          // 3. توجيه الإطار إلى رابط التضمين
-          iframe.src = data.embedUrl;
-          statusEl.style.display = 'none';
-        } else {
-          statusEl.innerText = 'تعذر العثور على رابط التضمين ⚠️';
+      try {
+        // أ) جلب كود الصفحة عبر بروكسي CORS عام
+        const corsProxy = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+        const res = await fetch(corsProxy);
+        const data = await res.json();
+        const html = data.contents;
+
+        // ب) استخراج النص المشفر
+        const match = html.match(/data-id="([^"]+)"/);
+        const encodedData = match ? match[1] : null;
+
+        if (!encodedData) {
+          statusEl.innerText = 'لم يتم العثور على شفرة البث في الصفحة ⚠️';
+          return;
         }
+
+        // ج) فك التشفير
+        const rawStreamUrl = decodeStreamUrl(encodedData);
+
+        if (!rawStreamUrl) {
+          statusEl.innerText = 'فشل في فك تشفير الرابط ❌';
+          return;
+        }
+
+        // د) تشغيل الفيديو
+        playStream(rawStreamUrl);
+
       } catch (err) {
-        statusEl.innerText = 'خطأ في الاتصال بالخادم ❌';
+        statusEl.innerText = 'تعذر الاتصال ببروكسي CORS ❌';
       }
     });
   </script>
