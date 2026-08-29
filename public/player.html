@@ -3,9 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>مشغل الفيديو الصافي</title>
-  <!-- 📦 استدعاء مكتبة HLS.js لتشغيل بث m3u8 -->
-  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+  <title>مشغل الفيديوهات متعدد السيرفرات</title>
   <style>
     * {
       box-sizing: border-box;
@@ -13,80 +11,91 @@
       padding: 0;
     }
     body {
-      background-color: #000;
+      background-color: #0b0c10;
       color: #fff;
+      font-family: system-ui, sans-serif;
       display: flex;
       flex-direction: column;
-      justify-content: center;
       align-items: center;
-      height: 100vh;
-      font-family: sans-serif;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .player-container {
+      width: 100%;
+      max-width: 960px;
+      aspect-ratio: 16 / 9;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+    .controls {
+      width: 100%;
+      max-width: 960px;
+      margin-top: 20px;
+    }
+    .controls h3 {
+      margin-bottom: 12px;
+      font-size: 1.1rem;
+      color: #66fcf1;
+    }
+    .server-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .server-btn {
+      background-color: #1f2833;
+      color: #c5c6c7;
+      border: 1px solid #45a29e;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.95rem;
+      transition: all 0.2s ease;
+    }
+    .server-btn:hover {
+      background-color: #45a29e;
+      color: #0b0c10;
+    }
+    .server-btn.active {
+      background-color: #66fcf1;
+      color: #0b0c10;
+      font-weight: bold;
     }
     #status {
       margin-bottom: 15px;
-      font-size: 1.1rem;
-    }
-    .video-container {
-      width: 100%;
-      max-width: 900px;
-      height: auto;
-    }
-    video {
-      width: 100%;
-      border-radius: 8px;
-      background: #111;
+      font-size: 1rem;
     }
   </style>
 </head>
 <body>
 
-  <div id="status">جاري جلب البث وفك التشفير... ⏳</div>
+  <div id="status">جاري تجهيز السيرفرات... ⏳</div>
 
-  <div class="video-container">
-    <video id="videoPlayer" controls playsinline></video>
+  <!-- 📺 إطار عرض الفيديو -->
+  <div class="player-container">
+    <iframe id="videoPlayer" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
+  </div>
+
+  <!-- 🎛️ قائمة أزرار السيرفرات -->
+  <div class="controls">
+    <h3>اختر السيرفر 🌐:</h3>
+    <div class="server-list" id="serverButtons"></div>
   </div>
 
   <script>
-    // 🔓 1. دالة فك التشفير (عكس النص ثم فك Base64)
-    function decodeStreamUrl(encodedText) {
-      try {
-        const reversed = encodedText.split('').reverse().join('');
-        return atob(reversed);
-      } catch (e) {
-        return null;
-      }
-    }
-
-    // ▶️ 2. دالة تشغيل البث عبر Hls.js
-    function playStream(streamUrl) {
-      const video = document.getElementById('videoPlayer');
-      const statusEl = document.getElementById('status');
-
-      if (Hls.isSupported()) {
-        const hls = new Hls();
-        hls.loadSource(streamUrl);
-        hls.attachMedia(video);
-        hls.on(Hls.Events.MANIFEST_PARSED, () => {
-          statusEl.style.display = 'none';
-          video.play();
-        });
-        hls.on(Hls.Events.ERROR, (event, data) => {
-          statusEl.innerText = 'خطأ في تشغيل مسار البث ⚠️';
-        });
-      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-        video.src = streamUrl;
-        video.addEventListener('loadedmetadata', () => {
-          statusEl.style.display = 'none';
-          video.play();
-        });
-      } else {
-        statusEl.innerText = 'متصفحك لا يدعم تشغيل هذا النوع من البث ❌';
-      }
-    }
-
-    // 🚀 3. العملية الرئيسية عند تحميل الصفحة
     document.addEventListener('DOMContentLoaded', async () => {
       const statusEl = document.getElementById('status');
+      const player = document.getElementById('videoPlayer');
+      const buttonsContainer = document.getElementById('serverButtons');
+
+      // 1. قراءة المعاملات من الرابط الحالي
       const params = new URLSearchParams(window.location.search);
       const type = params.get('type') || 'movie';
       const id = params.get('id');
@@ -94,44 +103,48 @@
       const e = params.get('e');
 
       if (!id) {
-        statusEl.innerText = 'يرجى تحديد معرف العمل id ❌';
+        statusEl.innerText = 'يرجى تحديد معرف العمل id في الرابط ❌';
         return;
       }
 
-      // تحديد رابط المزود الأصلي
-      let targetUrl = (type === 'tv') 
-        ? `https://vidsrc.to/embed/tv/${id}/${s}/${e}` 
-        : `https://vidsrc.to/embed/movie/${id}`;
-
       try {
-        // أ) جلب كود الصفحة عبر بروكسي CORS عام
-        const corsProxy = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
-        const res = await fetch(corsProxy);
+        // 2. طلب قائمة السيرفرات من الـ API
+        let apiUrl = `/api/servers?type=${type}&id=${id}`;
+        if (s && e) apiUrl += `&s=${s}&e=${e}`;
+
+        const res = await fetch(apiUrl);
         const data = await res.json();
-        const html = data.contents;
 
-        // ب) استخراج النص المشفر
-        const match = html.match(/data-id="([^"]+)"/);
-        const encodedData = match ? match[1] : null;
-
-        if (!encodedData) {
-          statusEl.innerText = 'لم يتم العثور على شفرة البث في الصفحة ⚠️';
+        if (!data.success || data.servers.length === 0) {
+          statusEl.innerText = 'لم يتم العثور على سيرفرات متاحة ⚠️';
           return;
         }
 
-        // ج) فك التشفير
-        const rawStreamUrl = decodeStreamUrl(encodedData);
+        statusEl.style.display = 'none';
 
-        if (!rawStreamUrl) {
-          statusEl.innerText = 'فشل في فك تشفير الرابط ❌';
-          return;
-        }
+        // 3. تشغيل السيرفر الأول افتراضياً
+        player.src = data.servers[0].url;
 
-        // د) تشغيل الفيديو
-        playStream(rawStreamUrl);
+        // 4. إنشاء زر لكل سيرفر
+        data.servers.forEach((server, index) => {
+          const btn = document.createElement('button');
+          btn.className = `server-btn ${index === 0 ? 'active' : ''}`;
+          btn.innerText = server.name;
+
+          btn.addEventListener('click', () => {
+            // تحديث رابط المشغل
+            player.src = server.url;
+
+            // تمييز الزر النشط
+            document.querySelectorAll('.server-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+          });
+
+          buttonsContainer.appendChild(btn);
+        });
 
       } catch (err) {
-        statusEl.innerText = 'تعذر الاتصال ببروكسي CORS ❌';
+        statusEl.innerText = 'حدث خطأ أثناء تحميل السيرفرات ❌';
       }
     });
   </script>
