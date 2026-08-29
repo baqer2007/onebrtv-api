@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>صفحة المشاهدة</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background-color: #111;
+      color: #fff;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .player-container {
+      width: 100%;
+      max-width: 900px;
+      aspect-ratio: 16 / 9;
+      background-color: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.7);
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>مشغل الفيديو 🎬</h2>
+
+  <div class="player-container">
+    <iframe id="videoFrame" allowfullscreen allow="autoplay; fullscreen; encrypted-media"></iframe>
+  </div>
+
+  <script>
+    // 1. قراءة المعرفات من الرابط الحالي
+    const params = new URLSearchParams(window.location.search);
+    const type = params.get('type') || 'movie';
+    const id = params.get('id');
+    const s = params.get('s');
+    const e = params.get('e');
+
+    // 2. توجيه الإطار إلى صفحة المشغل لديك
+    if (id) {
+      let targetSrc = `/player.html?type=${type}&id=${id}`;
+      if (s && e) {
+        targetSrc += `&s=${s}&e=${e}`;
+      }
+      document.getElementById('videoFrame').src = targetSrc;
+    }
+  </script>
+
+</body>
+</html>
