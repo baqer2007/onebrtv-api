@@ -26,7 +26,7 @@ app.get('/api/stream', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing TMDB ID' });
   }
 
-  // 1. التحقق من نوع العمل وتحديد الرابط المطلوب
+  // 1. تحديد رابط المزود المستهدف
   let targetUrl = '';
   if (type === 'tv') {
     if (!s || !e) {
@@ -38,26 +38,50 @@ app.get('/api/stream', async (req, res) => {
   }
 
   try {
-    // نص تجريبي لمحاكاة فك التشفير واستخراج البث الصافي
-    const mockEncodedData = "=02bj5SZulmcv52Y";
-    const realUrl = decodeStreamUrl(mockEncodedData);
+    // 2. طلب كود صفحة التضمين الحقيقية
+    const response = await axios.get(targetUrl, {
+      headers: { 
+        'User-Agent': USER_AGENT,
+        'Referer': 'https://vidsrc.to/'
+      },
+      timeout: 10000
+    });
 
-    if (realUrl) {
-      // 🛡️ تغليف الرابط الصافي داخل البروكسي
-      const proxiedUrl = `/api/proxy?url=${encodeURIComponent('https://' + realUrl)}&referer=https://vidsrc.to/`;
+    const html = response.data;
 
-      return res.json({
-        success: true,
-        type: type || 'movie',
-        id: id,
-        embedUrl: targetUrl,
-        streamUrl: proxiedUrl
-      });
+    // 3. البحث عن النص المشفر داخل كود الصفحة
+    const match = html.match(/data-id="([^"]+)"/);
+    const encodedData = match ? match[1] : null;
+
+    if (encodedData) {
+      // 4. فك تشفير البيانات
+      const realUrl = decodeStreamUrl(encodedData);
+
+      if (realUrl) {
+        const proxiedUrl = `/api/proxy?url=${encodeURIComponent(realUrl)}&referer=https://vidsrc.to/`;
+
+        return res.json({
+          success: true,
+          type: type || 'movie',
+          id: id,
+          streamUrl: proxiedUrl
+        });
+      }
     }
 
-    return res.status(500).json({ success: false, message: 'Decryption failed' });
+    // إذا لم نجد السمة المطلوبة داخل الصفحة
+    return res.status(404).json({ 
+      success: false, 
+      message: 'لم يتم العثور على مفتاح التشفير داخل الصفحة',
+      htmlSnippet: html.substring(0, 300) // جزء بسيط من الصفحة للمعاينة
+    });
+
   } catch (error) {
-    return res.status(500).json({ success: false, message: 'Server error' });
+    return res.status(500).json({ 
+      success: false, 
+      message: 'فشل في الاتصال بالمزود',
+      error: error.message 
+    });
   }
 });
 
