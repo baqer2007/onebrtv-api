@@ -1,9 +1,14 @@
 {
-  "name": "onebr-api",
+  "name": "stream-extractor-api",
   "version": "1.0.0",
+  "description": "Stream Extraction & Player API",
   "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js"
+  },
   "dependencies": {
-    "axios": "^1.7.2",
+    "@consumet/api": "^1.5.2",
+    "axios": "^1.7.0",
     "cors": "^2.8.5",
     "express": "^4.19.2"
   }
