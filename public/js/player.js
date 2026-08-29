@@ -2,7 +2,6 @@ document.addEventListener('DOMContentLoaded', () => {
   const statusEl = document.getElementById('status');
   const video = document.getElementById('videoPlayer');
 
-  // 1. قراءة المعاملات من رابط الصفحة
   const urlParams = new URLSearchParams(window.location.search);
   const streamUrl = urlParams.get('url');
   const subtitleUrl = urlParams.get('sub');
@@ -12,7 +11,7 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
-  // 2. إضافة ملف الترجمة إن وُجد
+  // إضافة ملف الترجمة إن وُجد
   if (subtitleUrl) {
     const track = document.createElement('track');
     track.kind = 'subtitles';
@@ -23,33 +22,35 @@ document.addEventListener('DOMContentLoaded', () => {
     video.appendChild(track);
   }
 
-  // 3. تمرير البث عبر البروكسي المحلي لتفادي مشاكل الحظر و CORS
-  const finalStreamUrl = `/api/proxy?url=${encodeURIComponent(streamUrl)}`;
-
-  // 4. تهيئة وتشغيل الفيديو عبر Hls.js
-  if (Hls.isSupported() && (streamUrl.includes('.m3u8') || streamUrl.includes('m3u'))) {
+  // تشغيل البث عبر Hls.js
+  if (Hls.isSupported()) {
     const hls = new Hls();
-    hls.loadSource(finalStreamUrl);
-    hls.attachMedia(video);
     
+    // تحميل الرابط المباشر
+    hls.loadSource(streamUrl);
+    hls.attachMedia(video);
+
     hls.on(Hls.Events.MANIFEST_PARSED, () => {
       statusEl.style.display = 'none';
       video.play().catch(() => {
-        console.log('انقر على الفيديو لبدء التشغيل');
+        console.log('انقر على الفيديو لبدء التشغيل يدويًا');
       });
     });
 
     hls.on(Hls.Events.ERROR, (event, data) => {
       if (data.fatal) {
-        statusEl.innerText = 'تعذر تحميل البث، قد يكون الرابط منتهياً ⚠️';
+        // إذا فشل الرابط المباشر، نجرب تمريره عبر البروكسي كحل بديل
+        console.warn('فشل الرابط المباشر، جاري التبديل إلى البروكسي...');
+        hls.loadSource(`/api/proxy?url=${encodeURIComponent(streamUrl)}`);
       }
     });
-  } else {
-    // للمتصفحات التي تدعم التشغيل المباشر أو لملفات MP4
-    video.src = finalStreamUrl;
+  } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+    video.src = streamUrl;
     video.addEventListener('loadedmetadata', () => {
       statusEl.style.display = 'none';
       video.play();
     });
+  } else {
+    statusEl.innerText = 'المتصفح لا يدعم هذا النوع من البث ⚠️';
   }
 });
