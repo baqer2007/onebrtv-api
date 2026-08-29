@@ -1,76 +1,55 @@
-document.addEventListener('DOMContentLoaded', async () => {
+document.addEventListener('DOMContentLoaded', () => {
   const statusEl = document.getElementById('status');
   const video = document.getElementById('videoPlayer');
 
-  // قراءة المعرفات من رابط الصفحة
+  // 1. قراءة المعاملات من رابط الصفحة
   const urlParams = new URLSearchParams(window.location.search);
-  const episodeId = urlParams.get('episodeId');
-  const mediaId = urlParams.get('mediaId');
+  const streamUrl = urlParams.get('url');
+  const subtitleUrl = urlParams.get('sub');
 
-  if (!episodeId || !mediaId) {
-    statusEl.innerText = 'خطأ: لم يتم تحديد معرف الحلقة أو العمل ❌';
+  if (!streamUrl) {
+    statusEl.innerText = 'خطأ: يرجى تزويد رابط الفيديو عبر المعامل ?url= ❌';
     return;
   }
 
-  try {
-    // جلب البيانات من الخادم
-    const response = await fetch(`/api/stream?episodeId=${encodeURIComponent(episodeId)}&mediaId=${encodeURIComponent(mediaId)}`);
-    const data = await response.json();
+  // 2. إضافة ملف الترجمة إن وُجد
+  if (subtitleUrl) {
+    const track = document.createElement('track');
+    track.kind = 'subtitles';
+    track.label = 'Arabic';
+    track.srclang = 'ar';
+    track.src = subtitleUrl;
+    track.default = true;
+    video.appendChild(track);
+  }
 
-    if (!data.success || !data.sources || data.sources.length === 0) {
-      statusEl.innerText = 'تعذر العثور على مصادر بث صالحة ⚠️';
-      return;
-    }
+  // 3. تمرير البث عبر البروكسي المحلي لتفادي مشاكل الحظر و CORS
+  const finalStreamUrl = `/api/proxy?url=${encodeURIComponent(streamUrl)}`;
 
-    // تحديد مسار الفيديو الأنسب
-    const streamSource = data.sources.find(s => s.quality === 'auto') || data.sources[0];
-    const streamUrl = streamSource.url;
-
-    // إضافة ملفات الترجمة المتاحة
-    if (data.subtitles && data.subtitles.length > 0) {
-      data.subtitles.forEach(sub => {
-        if (sub.lang && sub.url) {
-          const track = document.createElement('track');
-          track.kind = 'subtitles';
-          track.label = sub.lang;
-          track.srclang = sub.lang.substring(0, 2).toLowerCase();
-          track.src = sub.url;
-          if (sub.lang.toLowerCase().includes('arabic') || sub.lang.toLowerCase().includes('ara')) {
-            track.default = true;
-          }
-          video.appendChild(track);
-        }
+  // 4. تهيئة وتشغيل الفيديو عبر Hls.js
+  if (Hls.isSupported() && (streamUrl.includes('.m3u8') || streamUrl.includes('m3u'))) {
+    const hls = new Hls();
+    hls.loadSource(finalStreamUrl);
+    hls.attachMedia(video);
+    
+    hls.on(Hls.Events.MANIFEST_PARSED, () => {
+      statusEl.style.display = 'none';
+      video.play().catch(() => {
+        console.log('انقر على الفيديو لبدء التشغيل');
       });
-    }
+    });
 
-    // تشغيل البث عبر Hls.js
-    if (Hls.isSupported()) {
-      const hls = new Hls();
-      hls.loadSource(streamUrl);
-      hls.attachMedia(video);
-      hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        statusEl.style.display = 'none';
-        video.play().catch(() => {
-          console.log('يتطلب المتصفح تفاعلاً لبدء التشغيل');
-        });
-      });
-      hls.on(Hls.Events.ERROR, (event, data) => {
-        if (data.fatal) {
-          statusEl.innerText = 'حدث خطأ أثناء تشغيل مقطع الفيديو ❌';
-        }
-      });
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = streamUrl;
-      video.addEventListener('loadedmetadata', () => {
-        statusEl.style.display = 'none';
-        video.play();
-      });
-    } else {
-      statusEl.innerText = 'المتصفح لا يدعم تشغيل هذا البث ⚠️';
-    }
-
-  } catch (error) {
-    console.error(error);
-    statusEl.innerText = 'تعذر الاتصال بالخادم لجلب الفيديو 🔌';
+    hls.on(Hls.Events.ERROR, (event, data) => {
+      if (data.fatal) {
+        statusEl.innerText = 'تعذر تحميل البث، قد يكون الرابط منتهياً ⚠️';
+      }
+    });
+  } else {
+    // للمتصفحات التي تدعم التشغيل المباشر أو لملفات MP4
+    video.src = finalStreamUrl;
+    video.addEventListener('loadedmetadata', () => {
+      statusEl.style.display = 'none';
+      video.play();
+    });
   }
 });
